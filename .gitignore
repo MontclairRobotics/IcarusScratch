@@ -1,35 +1,35 @@
 !scratch-vm/src/extension-support/extension-manager.js
 !scratch-gui/src/lib/libraries/extensions/index.jsx
 
-scratch-vm/*
-scratch-gui/*
+env/scratch-vm/*
+env/scratch-gui/*
 
 # get icarus files
-!scratch-vm/src
-scratch-vm/src/*
+!env/scratch-vm/src
+env/scratch-vm/src/*
 
-!scratch-vm/src/extensions
-scratch-vm/src/extensions/*
+!env/scratch-vm/src/extensions
+env/scratch-vm/src/extensions/*
 
-!scratch-vm/src/extensions/icarus
+!env/scratch-vm/src/extensions/icarus
 
 # get manager file
-!scratch-vm/src/extension-support
-scratch-vm/src/extension-support/*
+!env/scratch-vm/src/extension-support
+env/scratch-vm/src/extension-support/*
 
-!scratch-vm/src/extension-support/extension-manager.js
+!env/scratch-vm/src/extension-support/extension-manager.js
 
 # get gui file
-!scratch-gui/src
-scratch-gui/src/*
+!env/scratch-gui/src
+env/scratch-gui/src/*
 
-!scratch-gui/src/lib
-scratch-gui/src/lib/*
+!env/scratch-gui/src/lib
+env/scratch-gui/src/lib/*
 
-!scratch-gui/src/lib/libraries
-scratch-gui/src/lib/libraries/*
+!env/scratch-gui/src/lib/libraries
+env/scratch-gui/src/lib/libraries/*
 
-!scratch-gui/src/lib/libraries/extensions
-scratch-gui/src/lib/libraries/extensions/*
+!env/scratch-gui/src/lib/libraries/extensions
+env/scratch-gui/src/lib/libraries/extensions/*
 
-!scratch-gui/src/lib/libraries/extensions/index.jsx
+!env/scratch-gui/src/lib/libraries/extensions/index.jsx
