@@ -1,0 +1,35 @@
+!scratch-vm/src/extension-support/extension-manager.js
+!scratch-gui/src/lib/libraries/extensions/index.jsx
+
+scratch-vm/*
+scratch-gui/*
+
+# get icarus files
+!scratch-vm/src
+scratch-vm/src/*
+
+!scratch-vm/src/extensions
+scratch-vm/src/extensions/*
+
+!scratch-vm/src/extensions/icarus
+
+# get manager file
+!scratch-vm/src/extension-support
+scratch-vm/src/extension-support/*
+
+!scratch-vm/src/extension-support/extension-manager.js
+
+# get gui file
+!scratch-gui/src
+scratch-gui/src/*
+
+!scratch-gui/src/lib
+scratch-gui/src/lib/*
+
+!scratch-gui/src/lib/libraries
+scratch-gui/src/lib/libraries/*
+
+!scratch-gui/src/lib/libraries/extensions
+scratch-gui/src/lib/libraries/extensions/*
+
+!scratch-gui/src/lib/libraries/extensions/index.jsx
