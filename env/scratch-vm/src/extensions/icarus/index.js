@@ -2,94 +2,22 @@ const Runtime = require('../../engine/runtime');
 const Sprite = require('../../sprites/sprite')
 const ArgumentType = require('../../extension-support/argument-type');
 const BlockType = require('../../extension-support/block-type');
-const log = require('../../util/log');
 const Cast = require('../../util/cast');
 const Target = require('../../engine/target');
 const RenderedTarget = require('../../sprites/rendered-target');
+const BlockUtility = require('../../engine/block-utility');
+const Timer = require('../../util/timer');
+
+const {Vec2d, trapezoidEvolve, Box2d, AABB} = require('../helpers');
 const MathUtil = require('../../util/math-util');
 
-function trapezoidEvolve(current, target, max_delta, dt)
-{
-    if(current instanceof Vec2d)
-    {
-        return new Vec2d(
-            MathUtil.clamp(target.x, current.x - max_delta*dt, current.x + max_delta*dt),
-            MathUtil.clamp(target.y, current.y - max_delta*dt, current.y + max_delta*dt)
-        )
-    }
+const MAX_VEL = 30;
+const MAX_OMG = 600;
 
-    return MathUtil.clamp(target, current - max_delta*dt, current + max_delta*dt)
-}
+const XYAccel = 15;
+const ThetaAccel = 180;
 
-class Vec2d
-{
-    /**
-     * @param {number} x 
-     * @param {number} y 
-     */
-    constructor(x, y)
-    {
-        /**
-         * @type number
-         */
-        this.x = x
-        /**
-         * @type number
-         */
-        this.y = y
-    }
-
-    static get zero()
-    {
-        return new Vec2d(0, 0)
-    }
-
-    add(other)
-    {
-        return new Vec2d(this.x + other.x, this.y + other.y)
-    }
-    sub(other)
-    {
-        return new Vec2d(this.x - other.x, this.y - other.y)
-    }
-    mul(other)
-    {
-        return new Vec2d(this.x * other, this.y * other)
-    }
-    div(other)
-    {
-        return new Vec2d(this.x / other, this.y / other)
-    }
-
-    get neg()
-    {
-        return new Vec2d(-this.x, -this.y)
-    }
-
-    get length()
-    {
-        return Math.hypot([this.x, this.y])
-    }
-
-    rot(deg)
-    {
-        rad = MathUtil.degToRad(deg)
-        return new Vec2d(
-            this.x * Math.cos(rad) - this.y * Math.sin(rad),
-            this.x * Math.sin(rad) + this.y * Math.cos(rad)
-        )
-    }
-
-    static from(obj)
-    {
-        return new Vec2d(obj.x, obj.y)
-    }
-}
-
-const XYAccel = 5;
-const ThetaAccel = 60;
-
-const StingerOut = 0;
+const StingerOut = 1;
 const StingerIn = 0;
 
 class IcarusExtension
@@ -113,7 +41,11 @@ class IcarusExtension
         this.stinger_out = false
         this.grabber_grab = false
 
-        console.log(this.runtime.eventNames())
+        this.held_piece = null
+        this.held_piece_offset = Vec2d.zero
+        this.held_piece_dir_off = 0
+
+        console.log('Initializing ICARUS')
     }
 
     /**
@@ -121,7 +53,15 @@ class IcarusExtension
      */
     getRobot()
     {
-        return this.runtime.getSpriteTargetByName('Icarus')
+        return this.runtime.getSpriteTargetByName('Robot')
+    }
+
+    /**
+     * @returns {Sprite | Target | RenderedTarget}
+     */
+    getBonk()
+    {
+        return this.runtime.getSpriteTargetByName('Bonk')
     }
 
     /**
@@ -130,7 +70,7 @@ class IcarusExtension
     getGamePieces()
     {
         let ret = []
-        this.runtime.getSpriteTargetByName('Cube').clones.forEach(ret.push)
+        this.runtime.getSpriteTargetByName('Cube').clones.forEach(ret.push.bind(ret))
         return ret
     }
 
@@ -140,50 +80,10 @@ class IcarusExtension
             id: "icarus",
             name: "Icarus",
 
-            color1: "#2090FF",
-            color2: "#2090FF",
+            color1: "#1060A0",
+            color2: "#053070",
 
             blocks: [
-                {
-                    opcode: "ternary",
-                    blockType: BlockType.REPORTER,
-                    text: "if [CONDITION] then [TRUE] else [FALSE]",
-                    arguments: {
-                        CONDITION: {
-                            type: ArgumentType.BOOLEAN,
-                            defaultValue: false
-                        },
-                        TRUE: {
-                            type: ArgumentType.STRING,
-                            defaultValue: " "
-                        },
-                        FALSE: {
-                            type: ArgumentType.STRING,
-                            defaultValue: " "
-                        }
-                    }
-                },
-                {
-                    opcode: 'tripleif',
-                    blockType: BlockType.CONDITIONAL,
-                    text: [
-                        "if [COND1] then",
-                        "elif [COND2] then",
-                        "else"
-                    ],
-                    branchCount: 3,
-                    arguments: {
-                        COND1: {
-                            type: ArgumentType.BOOLEAN,
-                            defaultValue: false
-                        },
-                        COND2: {
-                            type: ArgumentType.BOOLEAN,
-                            defaultValue: false
-                        }
-                    }
-                },
-                '---',
                 {
                     opcode: "update",
                     blockType: BlockType.COMMAND,
@@ -257,6 +157,21 @@ class IcarusExtension
                     blockType: BlockType.REPORTER,
                     text: 'current target angular speed'
                 },
+                {
+                    opcode: "xPos",
+                    blockType: BlockType.REPORTER,
+                    text: 'robot x position'
+                },
+                {
+                    opcode: "yPos",
+                    blockType: BlockType.REPORTER,
+                    text: 'robot y position'
+                },
+                {
+                    opcode: "dir",
+                    blockType: BlockType.REPORTER,
+                    text: 'robot direction'
+                },
                 '---',
                 {
                     opcode: 'getFieldRelative',
@@ -272,31 +187,83 @@ class IcarusExtension
                     opcode: 'disableFieldRelative',
                     blockType: BlockType.COMMAND,
                     text: 'disable field relative'
-                }
+                },
+                '---',
+                {
+                    opcode: 'getGrabberGrabbed',
+                    blockType: BlockType.BOOLEAN,
+                    text: 'grabber closed?'
+                },
+                {
+                    opcode: 'grabGrabber',
+                    blockType: BlockType.COMMAND,
+                    text: 'close grabber'
+                },
+                {
+                    opcode: 'releaseGrabber',
+                    blockType: BlockType.COMMAND,
+                    text: 'open grabber'
+                },
+                {
+                    opcode: 'getStingerOut',
+                    blockType: BlockType.BOOLEAN,
+                    text: 'stinger is out?'
+                },
+                {
+                    opcode: 'stingerOut',
+                    blockType: BlockType.COMMAND,
+                    text: 'stinger out'
+                },
+                {
+                    opcode: 'stingerIn',
+                    blockType: BlockType.COMMAND,
+                    text: 'stinger in'
+                },
             ]
         }
     }
 
-    tripleif({COND1, COND2})
+    
+    getBox()
     {
-        let branch = 3
-        if(Cast.toBoolean(COND1)) branch = 1
-        else if(Cast.toBoolean(COND2)) branch = 2
-        
-        this.runtime.sequencer.stepToBranch(this.runtime.sequencer.activeThread, branch, false)
+        const robot = this.getRobot()
+
+        if(!robot) return null
+
+        const SIZE = 152 * robot.size / 100
+
+        return new Box2d(
+            robot.getVec(), 
+            new Vec2d(SIZE, SIZE), 
+            90 - robot.direction
+        )
     }
 
-    ternary({CONDITION, TRUE, FALSE})
-    {
-        if(Cast.toBoolean(CONDITION)) return TRUE
-        return FALSE
-    }
+    /**
+     * @type {AABB[]}
+     */
+    static BOUNDARIES = [
+        // border around
+        AABB.minAndSize(new Vec2d(-240, -180), new Vec2d(85, 360)),
+        AABB.minAndSize(new Vec2d(-240, -220), new Vec2d(520, 40)),
+        AABB.minAndSize(new Vec2d(-240, +180), new Vec2d(520, 40)),
+        AABB.minAndSize(new Vec2d(+240, -220), new Vec2d(40, 400)),
+
+        // charge station
+        new AABB(new Vec2d(-10, +80), new Vec2d(80, 1)),
+        new AABB(new Vec2d(-10, -80), new Vec2d(80, 1)),
+    ]
+
 
     update()
     {
-        let robot = this.getRobot()
+        const robot = this.getRobot()
 
         if(!robot) return
+
+        this.target_vel.x = MathUtil.clamp(this.target_vel.x, -MAX_VEL, MAX_VEL)
+        this.target_vel.y = MathUtil.clamp(this.target_vel.y, -MAX_VEL, MAX_VEL)
+        this.target_omega = MathUtil.clamp(this.target_omega, -MAX_OMG, MAX_OMG)
         
         this.vel   = trapezoidEvolve(this.vel,   this.target_vel,   XYAccel,    this.runtime.currentStepTime / 1000)
         this.omega = trapezoidEvolve(this.omega, this.target_omega, ThetaAccel, this.runtime.currentStepTime / 1000)
@@ -305,12 +272,83 @@ class IcarusExtension
 
         if(!this.field_relative)
         {
-            realVel = realVel.rot(robot.direction)
+            realVel = realVel.rot(90 - robot.direction)
         }
 
-        robot.x         += this.vel.x
-        robot.y         += this.vel.y
-        robot.direction += this.omega
+        if(this.stinger_out)
+        {
+            robot.setCostume(StingerOut)
+        }
+        else
+        {
+            robot.setCostume(StingerIn)
+        }
+
+        const steps = Math.min(10, Math.ceil(this.vel.length / 3))
+        const velStep = this.vel.div(steps)
+        const omgStep = this.omega / steps
+
+        const bonk = this.getBonk()
+        if(bonk)
+        {
+            bonk.setEffect('ghost', 100)
+            bonk.setDirection(Math.random() * 360)
+        }
+
+        let hit = {
+            x: false,
+            y: false,
+            o: false
+        }
+
+        // handle translation
+        for(let i = 0; i < steps; i++)
+        {
+            let hitBoundary = false
+
+            trymove = (move, unmove, modVel) =>
+            {
+                move()
+                const box = this.getBox()
+
+                for (const boundary of IcarusExtension.BOUNDARIES)
+                {
+                    const intersect = boundary.intersect(box)
+                    if(intersect)
+                    {
+                        unmove()
+                        modVel()
+
+                        if(bonk)
+                        {
+                            bonk.setEffect('ghost', 0)
+                            bonk.setXY(intersect.x, intersect.y)
+                        }
+
+                        hitBoundary = true
+                        return
+                    }
+                }
+            }
+            
+            trymove(
+                () => robot.x += velStep.x,
+                () => robot.x -= velStep.x,
+                () => {if(!hit.x) {hit.x = true; this.vel.x = velStep.x * i}}
+            )
+            trymove(
+                () => robot.y += velStep.y,
+                () => robot.y -= velStep.y,
+                () => {if(!hit.y) {hit.y = true; this.vel.y = velStep.y * i}}
+            )
+            trymove(
+                () => robot.direction += omgStep,
+                () => robot.direction -= omgStep,
+                () => {if(!hit.o) {hit.o = true; this.omega = omgStep * i}}
+            )
+
+            if(hitBoundary) break
+        }
 
         robot.setXY(robot.x, robot.y)
         robot.setDirection(robot.direction)
@@ -326,6 +364,14 @@ class IcarusExtension
     getFieldRelative() {return this.field_relative}
     enableFieldRelative() {this.field_relative = true}
     disableFieldRelative() {this.field_relative = false}
+    
+    getGrabberGrabbed() {return this.grabber_grab}
+    grabGrabber() {this.grabber_grab = true}
+    releaseGrabber() {this.grabber_grab = false}
+    
+    getStingerOut() {return this.stinger_out}
+    stingerOut() {this.stinger_out = true}
+    stingerIn() {this.stinger_out = false}
 
     setXSpeed({X})
     {
@@ -343,6 +389,21 @@ class IcarusExtension
     xSpeed() {return this.target_vel.x}
     ySpeed() {return this.target_vel.y}
     tSpeed() {return this.target_omega}
+
+    /**
+     * @param {(robot: (Sprite | RenderedTarget | Target)) => number} fn 
+     * @returns {number}
+     */
+    inspectBot(fn)
+    {
+        const robot = this.getRobot();
+        if (robot) return fn(robot);
+        else return 0;
+    }
+
+    xPos() {return this.inspectBot(r => r.x)}
+    yPos() {return this.inspectBot(r => r.y)}
+    dir() {return this.inspectBot(r => r.direction)}
 }
 
 module.exports = IcarusExtension
