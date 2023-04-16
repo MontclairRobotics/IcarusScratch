@@ -20,6 +20,16 @@ export function trapezoidEvolve(current, target, max_delta, dt)
     return MathUtil.clamp(target, current - max_delta*dt, current + max_delta*dt)
 }
 
+export function angleDifference(a, b)
+{
+    // https://stackoverflow.com/questions/1878907/how-can-i-find-the-smallest-difference-between-two-angles-around-a-point s
+    let t = a - b
+    if(t > 180) t -= 360
+    if(t < -180) t += 360
+
+    return t
+}
+
 export class Polygon2d
 {
     /**
@@ -63,7 +73,7 @@ export class Polygon2d
      * @param {Polygon2d} other 
      * @returns {?Vec2d}
      */
-    intersect(other)
+    shell_intersect(other)
     {
         const options = this.segments.flatMap(a => other.segments.map(b => [a, b]))
         for (const [a, b] of options) 
@@ -127,6 +137,14 @@ export class AABB extends Polygon2d
     {
         return (this._min.x < point.x && point.x < this._max.x)
             && (this._min.y < point.y && point.y < this._max.y);
+    }
+
+    /**
+     * @param {Polygon2d} other 
+     */
+    intersect(other)
+    {
+        return this.shell_intersect(other) || other.points.some(p => this.contains(p))
     }
 }
 
@@ -192,6 +210,15 @@ export class Vec2d
     static get zero()
     {
         return new Vec2d(0, 0)
+    }
+
+    /**
+     * @param {Vec2d} other 
+     * @returns {number}
+     */
+    dot(other)
+    {
+        return this.x * other.x + this.y + other.y
     }
 
     /**
