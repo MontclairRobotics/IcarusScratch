@@ -25,7 +25,8 @@ const builtinExtensions = {
     boost: () => require('../extensions/scratch3_boost'),
     gdxfor: () => require('../extensions/scratch3_gdx_for'),
     icarus: () => require('../extensions/icarus'),
-    advanced: () => require('../extensions/advanced')
+    advanced: () => require('../extensions/advanced'),
+    controllers: () => require('../extensions/scratch3_controllers')
 };
 
 /**
